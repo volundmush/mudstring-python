@@ -1,0 +1,3 @@
+I have no idea yet.
+
+This has reverse-engineered code from PennMUSH (Artistic License) and a bit of Evennia code (BSD License)...
