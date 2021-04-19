@@ -3,12 +3,12 @@ import random
 import re
 import html
 import copy
-from typing import List
 from . colors import COLORS, FG_DOWNGRADE, BG_DOWNGRADE
 from colored.hex import HEX
+from typing import Union
 
 
-class AnsiException(Exception):
+class MudStringError(Exception):
     pass
 
 
@@ -167,6 +167,14 @@ BASE_COLOR_MAP = {
     'w': 37
 }
 
+CIRCLE_REGEX = {
+    "fg_ansi": re.compile(r"^[xrgObpcwzRGYBPCWvVuUiIsSdD]"),
+    "blink_fg_ansi": re.compile(r"^[xrgObpcwzRGYBPCW]"),
+    "bg_ansi": re.compile(r"^[xrgObpcWwY]"),
+    "xterm_number": re.compile(r"^\[(F|B)[0-5]{3}\]", flags=re.IGNORECASE),
+    "xterm_predef": re.compile(r"^[rRgGbByYmMcCwWaAjJlLoOpPtTvV]")
+}
+
 
 class AnsiData:
     def __init__(self):
@@ -199,10 +207,16 @@ class AnsiData:
         self.bg_codes = ''
         self.reset = True
 
+    def enter(self):
+        pass
+
+    def exit(self):
+        pass
+
     def styles(self, bits: int):
         return [v for k, v in CBIT_MAP.items() if bits & k]
 
-    def apply_ansi_rule(self, rule_tuple):
+    def apply_penn_rule(self, rule_tuple):
         mode, g, data, original = rule_tuple
         if mode == "letters":
             for c in data:
@@ -252,6 +266,9 @@ class AnsiData:
             self.bg_data = data
             self.bg_text = original
             self.bg_clear = False
+
+    def apply_circle_rule(self, mode: str, data: str):
+        pass
 
     def render(self, xterm256: bool = True, downgrade: bool = True):
         """
@@ -441,7 +458,7 @@ class AnsiData:
             return ''
 
 
-def separate_codes(codes: str):
+def separate_codes(codes: str, errors: str = "strict"):
     codes = ' '.join(codes.split())
 
     while len(codes):
@@ -470,7 +487,7 @@ def separate_codes(codes: str):
                             data = match.groupdict()["data"]
                             number = abs(int(data))
                             if number > 255:
-                                raise AnsiException(match.group(0))
+                                raise MudStringError(match.group(0))
                             yield (k, "bg", number, match.group(0))
                             break
                         if k == "name":
@@ -485,7 +502,7 @@ def separate_codes(codes: str):
                             yield (k, "bg", hex, match.group(0))
                             break
                 if not matched:
-                    raise AnsiException(codes)
+                    raise MudStringError(codes)
 
         elif codes[0].isspace():
             codes = codes[1:]
@@ -508,7 +525,7 @@ def separate_codes(codes: str):
                         data = match.groupdict()["data"]
                         number = abs(int(data))
                         if number > 255:
-                            raise AnsiException(match.group(0))
+                            raise MudStringError(match.group(0))
                         yield (k, "fg", number, match.group(0))
                         break
                     elif k in ("hex1", "hex2"):
@@ -521,7 +538,7 @@ def separate_codes(codes: str):
                         break
 
             if not matched:
-                raise AnsiException(codes)
+                raise MudStringError(codes)
 
 
 def test_separate(codes: str):
@@ -531,14 +548,12 @@ def test_separate(codes: str):
 
 class Markup:
 
-    def __init__(self, ansi_string, parent, standalone: bool, code: str, counter: int):
-        self.ansi_string = ansi_string
-        self.counter = counter
+    def __init__(self, parent, code: str, encoding: str):
         self.children = list()
         self.parent = parent
+        self.encoding = encoding
         if self.parent:
             self.parent.children.append(self)
-        self.standalone = standalone
         self.code = code
         self.start_text = ""
         self.end_text = ""
@@ -553,7 +568,10 @@ class Markup:
         Returns:
             markup (str)
         """
-        return f"{AnsiMarkup.TAG_START}{self.code}{self.start_text}{AnsiMarkup.TAG_END}"
+        if self.code == 'c':
+            return f"{AnsiMarkup.TAG_START}{self.code}{self.ansi.enter()}{AnsiMarkup.TAG_END}"
+        elif self.code == 'p':
+            return f"{AnsiMarkup.TAG_START}{self.code}{self.start_text}{AnsiMarkup.TAG_END}"
 
     def exit(self):
         """
@@ -562,7 +580,10 @@ class Markup:
         Returns:
             markup (str)
         """
-        return f"{AnsiMarkup.TAG_START}{self.code}/{self.end_text}{AnsiMarkup.TAG_END}"
+        if self.code == 'c':
+            return f"{AnsiMarkup.TAG_START}{self.code}/{self.ansi.exit()}{AnsiMarkup.TAG_END}"
+        elif self.code == 'p':
+            return f"{AnsiMarkup.TAG_START}{self.code}/{self.end_text}{AnsiMarkup.TAG_END}"
 
     def ancestors(self, reversed=False):
         """
@@ -582,13 +603,13 @@ class Markup:
         return out
 
     def __repr__(self):
-        return f"<Markup {self.counter}: {self.code} - {self.start_text}>"
+        return f"<{self.encoding} Markup: {self.code} - {self.start_text}>"
 
-    def setup(self):
+    def setup(self, errors: str = "strict"):
         if self.code == 'c':
-            self.setup_ansi()
+            self.setup_ansi(errors)
         elif self.code == 'p':
-            self.setup_html()
+            self.setup_html(errors)
 
     def inherit_or_create_ansi(self):
         for a in self.ancestors():
@@ -596,15 +617,23 @@ class Markup:
                 return copy.copy(a.ansi)
         return AnsiData()
 
-    def setup_ansi(self):
-        self.ansi = self.inherit_or_create_ansi()
-        for rule in separate_codes(self.start_text):
-            self.ansi.apply_ansi_rule(rule)
+    def setup_ansi(self, errors: str = "strict"):
+        if self.encoding == "pennmush":
+            self.ansi = self.inherit_or_create_ansi()
+            for rule in separate_codes(self.start_text, errors):
+                self.ansi.apply_penn_rule(rule)
+        elif self.encoding == "circle":
+            self.ansi = self.inherit_or_create_ansi()
+            self.ansi.apply_circle_rule(self.end_text, self.start_text)
 
-    def setup_html(self):
-        self.html_start = AnsiMarkup.ANSI_START + '4z' + f"<{self.start_text}>"
-        tag, extra = self.start_text.split(' ', 1)
-        self.html_end = AnsiMarkup.ANSI_START + '4z' + f"</{tag}>"
+    def setup_html(self, errors: str = "strict"):
+        if self.encoding == "pennmush":
+            self.html_start = AnsiMarkup.ANSI_START + '4z' + f"<{self.start_text}>"
+            if ' ' in self.start_text:
+                tag, extra = self.start_text.split(' ', 1)
+            else:
+                tag = self.start_text
+            self.html_end = AnsiMarkup.ANSI_START + '4z' + f"</{tag}>"
 
     def enter_html(self):
         return self.html_start
@@ -613,31 +642,27 @@ class Markup:
         return self.html_end
 
 
-class MudString(str):
+class MudString:
     re_format = re.compile(
         r"(?i)(?P<just>(?P<fill>.)?(?P<align>\<|\>|\=|\^))?(?P<sign>\+|\-| )?(?P<alt>\#)?"
         r"(?P<zero>0)?(?P<width>\d+)?(?P<grouping>\_|\,)?(?:\.(?P<precision>\d+))?"
         r"(?P<type>b|c|d|e|E|f|F|g|G|n|o|s|x|X|%)?"
     )
 
-    def __init__(self, src: str = None):
-        self.source = ""
+    def __init__(self, src: str = None, idx=None):
         self.clean = ""
-        self.markup = list()
-        self.markup_idx_map = list()
-        if isinstance(src, MudString):
+        self.markup_idx_map = list() if not idx else idx
+        if idx:
+            self.regen_clean()
+        elif isinstance(src, MudString):
             self.source = src.source
             self.clean = src.clean
             self.markup = list(src.markup)
             self.markup_idx_map = list(src.markup_idx_map)
-        elif src:
-            if AnsiMarkup.TAG_START in src:
-                self.decode(src)
-            else:
-                if src:
-                    self.clean = src
-                    for c in list(src):
-                        self.markup_idx_map.append((None, c))
+        elif isinstance(src, str):
+            self.clean = src
+            for c in src:
+                self.markup_idx_map.append((None, c))
 
     def __len__(self):
         return len(self.clean)
@@ -655,13 +680,10 @@ class MudString(str):
             sliced.append(self.markup_idx_map[item])
         else:
             sliced = self.markup_idx_map[item]
-        out = self.clone()
-        out.markup_idx_map = sliced
-        out.regen_clean()
-        return out
+        return self.__class__(idx=sliced)
 
     def __str__(self):
-        return self.encoded()
+        return self.encode()
 
     def __format__(self, format_spec):
         """
@@ -675,7 +697,7 @@ class MudString(str):
                 at https://docs.python.org/3/library/string.html#formatspec
 
         Returns:
-            ansi_str (str): The formatted ANSIString's .raw() form, for display.
+            str (str): The formatted ANSIString's .raw() form, for display.
         """
         # This calls the compiled regex stored on ANSIString's class to analyze the format spec.
         # It returns a dictionary.
@@ -703,8 +725,8 @@ class MudString(str):
         else:
             output = self[0:width]
 
-        # Return the raw string with ANSI markup, ready to be displayed.
-        return output.encoded()
+        # Return the raw string with ANSI markup. The resulting string must be decode'd back to a MudString.
+        return output.encode()
 
     def truthy(self):
         if not self.clean:
@@ -763,7 +785,7 @@ class MudString(str):
         return MudString(other) + self
 
     def __repr__(self):
-        return f"<MudString({repr(self.encoded())})>"
+        return f"<MudString({repr(self.encode())})>"
 
     def regen_clean(self):
         if self.markup_idx_map:
@@ -772,18 +794,7 @@ class MudString(str):
             self.clean = ''
 
     def clone(self):
-        other = self.__class__()
-        other.clean = self.clean
-        other.markup = list(self.markup)
-        other.markup_idx_map = list(self.markup_idx_map)
-        return other
-
-    @classmethod
-    def from_tuples(cls, tuples):
-        other = cls()
-        other.markup_idx_map.extend(tuples)
-        other.regen_clean()
-        return other
+        return self.__class__(idx=list(self.markup_idx_map))
 
     def split(self, sep: str = ' ', maxsplit: int = None):
         tuples = list()
@@ -806,7 +817,7 @@ class MudString(str):
                 cur.append(t)
         if cur:
             tuples.append(cur)
-        return [MudString.from_tuples(tup) for tup in tuples]
+        return [self.__class__(idx=tup) for tup in tuples]
 
     def join(self, iterable):
         out_lists = list()
@@ -824,7 +835,7 @@ class MudString(str):
             out_tuples.extend(l)
             if i+1 < total:
                 out_tuples.extend(separator)
-        return MudString.from_tuples(out_tuples)
+        return self.__class__(idx=out_tuples)
 
     def capitalize(self):
         other = self.clone()
@@ -838,8 +849,81 @@ class MudString(str):
     def count(self, *args, **kwargs):
         return self.clean.count(*args, **kwargs)
 
-    def encode(self, *args, **kwargs):
-        return self.clean.encode(*args, **kwargs)
+    def encode(self, encoding: str = "pennmush", errors: str = "strict"):
+        if (found := getattr(self, f"encode_{encoding}", None)):
+            return found(errors)
+        else:
+            raise MudStringError(f"Unsupported encoding: {encoding}")
+
+    def encode_pennmush(self, errors: str = "strict"):
+        cur = None
+        out = ""
+        for m, c in self.markup_idx_map:
+            if m:
+                if cur:
+                    # We are inside of a markup!
+                    if m is cur:
+                        # still inside same markup.
+                        out += c
+                    elif m.parent is cur:
+                        # we moved into a child.
+                        cur = m
+                        out += m.enter()
+                        out += c
+                    elif cur.parent is m:
+                        # we left a child and re-entered its parent
+                        out += cur.exit()
+                        out += c
+                        cur = m
+                    else:
+                        # we are moving from one tag to another, but it is not a direct parent or child.
+                        # we need to figure out if it's related at all and take proper measures.
+                        ancestors = cur.ancestors()
+                        try:
+                            idx = ancestors.index(m)
+                            # this is an ancestor if we have an index. Otherwise, it will raise ValueError.
+                            # We need to close out of the ancestors we have left. A slice accomplishes that.
+                            for ancestor in reversed(ancestors[idx:]):
+                                out += ancestor.exit()
+
+                        except ValueError:
+                            # this is not an ancestor. Exit all ancestors and cur.
+                            out += cur.exit()
+                            for ancestor in reversed(ancestors):
+                                out += ancestor.exit()
+
+                        # now we enter the new tag.
+                        cur = m
+                        for ancestor in m.ancestors():
+                            out += ancestor.enter()
+                        out += m.enter()
+                        out += c
+                else:
+                    # We are not inside of a markup tag. Well, that changes now.
+                    cur = m
+                    for ancestor in m.ancestors():
+                        out += ancestor.enter()
+                    out += m.enter()
+                    out += c
+            else:
+                # we are moving into a None markup...
+                if cur:
+                    # exit current markup.
+                    out += cur.exit()
+                    for ancestor in reversed(cur.ancestors()):
+                        out += ancestor.exit()
+                    out += c
+                    cur = m
+                else:
+                    # from no markup to no markup. Just append the character.
+                    out += c
+
+        if cur:
+            out += cur.exit()
+            for ancestor in reversed(cur.ancestors()):
+                out += ancestor.exit()
+
+        return out
 
     def startswith(self, *args, **kwargs):
         return self.clean.startswith(*args, **kwargs)
@@ -848,7 +932,7 @@ class MudString(str):
         return self.clean.endswith(*args, **kwargs)
 
     def center(self, width, fillchar=' '):
-        return self.__class__(self.clean.center(width, fillchar).replace(self.clean, self.encoded()))
+        return self.__class__(self.clean.center(width, fillchar).replace(self.clean, self.encode()))
 
     def find(self, *args, **kwargs):
         return self.clean.find(*args, **kwargs)
@@ -890,20 +974,15 @@ class MudString(str):
         return self.clean.isupper()
 
     def ljust(self, width, fillchar=' '):
-        return self.__class__(self.clean.ljust(width, fillchar).replace(self.clean, self.encoded()))
+        return self.__class__(self.clean.ljust(width, fillchar).replace(self.clean, self.encode()))
 
     def rjust(self, width, fillchar=' '):
-        return self.__class__(self.clean.ljust(width, fillchar).replace(self.clean, self.encoded()))
+        return self.__class__(self.clean.ljust(width, fillchar).replace(self.clean, self.encode()))
 
     def lstrip(self, chars: str = None):
         lstripped = self.clean.lstrip(chars)
         strip_count = len(self.clean) - len(lstripped)
-        other = self.__class__()
-        other.markup = list(self.markup)
-        other.markup_idx_map = self.markup_idx_map[strip_count:]
-        other.clean = lstripped
-        other.source = other.encoded()
-        return other
+        return self.__class__(idx=self.markup_idx_map[strip_count:])
 
     def strip(self, chars: str = ' '):
         out_map = list(self.markup_idx_map)
@@ -917,10 +996,7 @@ class MudString(str):
                 out_map = out_map[i:]
                 break
         out_map.reverse()
-        out = self.clone()
-        out.markup_idx_map = out_map
-        out.regen_clean()
-        return out
+        return self.__class__(idx=out_map)
 
     def replace(self, old: str, new: str, count=None):
         if not (indexes := self.find_all(old)):
@@ -965,99 +1041,11 @@ class MudString(str):
             indexes.append(start)
             start += len(sub)
 
-    def decode(self, src: str):
-        self.source = src
-        self.clean = ""
-        self.markup.clear()
-        self.markup_idx_map.clear()
-
-        state, index = 0, None
-        mstack = list()
-        tag = ""
-        counter = -1
-
-        for s in src:
-            if state == 0:
-                if s == AnsiMarkup.TAG_START:
-                    state = 1
-                else:
-                    self.clean += s
-                    self.markup_idx_map.append((index, s))
-            elif state == 1:
-                # Encountered a TAG START...
-                tag = s
-                state = 2
-            elif state == 2:
-                # we are just inside a tag. if it begins with / this is a closing. else, opening.
-                if s == "/":
-                    state = 4
-                else:
-                    state = 3
-                    counter += 1
-                    mark = Markup(self, index, False, tag, counter)
-                    self.markup.append(mark)
-                    index = mark
-                    mark.start_text += s
-                    mstack.append(mark)
-            elif state == 3:
-                # we are inside an opening tag, gathering text. continue until TAG_END.
-                if s == AnsiMarkup.TAG_END:
-                    state = 0
-                else:
-                    mstack[-1].start_text += s
-            elif state == 4:
-                # we are inside a closing tag, gathering text. continue until TAG_END.
-                if s == AnsiMarkup.TAG_END:
-                    state = 0
-                    mark = mstack.pop()
-                    index = mark.parent
-                else:
-                    mstack[-1].end_text += s
-
-        for m in self.markup:
-            m.setup()
-
     def scramble(self):
         other = self.clone()
         random.shuffle(other.markup_idx_map)
         other.clean = ''.join([s[1] for s in other.markup_idx_map])
         return other
-
-    @classmethod
-    def from_markup(cls, src: str):
-        pa = cls()
-        pa.decode(src)
-        return pa
-
-    @classmethod
-    def from_ansi(cls, src: str, mxp=False):
-        pass
-
-    @classmethod
-    def from_args(cls, code: str, text: str):
-        code = code.strip()
-        if code:
-            try:
-                if isinstance(text, MudString):
-                    text = text.encoded()
-                return cls(f"{AnsiMarkup.TAG_START}c{code}{AnsiMarkup.TAG_END}{text}{AnsiMarkup.TAG_START}c/{AnsiMarkup.TAG_END}")
-            except AnsiException as e:
-                return cls(f"#-1 INVALID ANSI DEFINITION: {e}")
-        else:
-            return MudString(text)
-
-    @classmethod
-    def from_html(cls, tag: str, text: str, **kwargs):
-        attrs = ' '.join([f'{k}="{v}"' for k, v in kwargs.items()])
-        return cls(f"{AnsiMarkup.TAG_START}p{tag} {attrs}{AnsiMarkup.TAG_END}{text}{AnsiMarkup.TAG_START}p/{tag} {attrs}{AnsiMarkup.TAG_END}")
-
-    @classmethod
-    def send_menu(cls, text: str, commands=None):
-        if commands is None:
-            commands = []
-        hints = '|'.join(a[1] for a in commands)
-        cmds = '|'.join(a[0] for a in commands)
-        return cls.from_html(tag='SEND', text=text, hint=hints, href=cmds)
 
     def plain(self):
         return self.clean
@@ -1098,7 +1086,7 @@ class MudString(str):
         cur_mxp = None
 
         for m, c in tuples:
-            if m:
+            if isinstance(m, Markup):
                 if cur:
                     # We are inside of a markup!
                     if m is cur:
@@ -1243,72 +1231,161 @@ class MudString(str):
 
         return out
 
-    def encoded(self):
-        cur = None
-        out = ""
-        for m, c in self.markup_idx_map:
-            if m:
-                if cur:
-                    # We are inside of a markup!
-                    if m is cur:
-                        # still inside same markup.
-                        out += c
-                    elif m.parent is cur:
-                        # we moved into a child.
-                        cur = m
-                        out += m.enter()
-                        out += c
-                    elif cur.parent is m:
-                        # we left a child and re-entered its parent
-                        out += cur.exit()
-                        out += c
-                        cur = m
-                    else:
-                        # we are moving from one tag to another, but it is not a direct parent or child.
-                        # we need to figure out if it's related at all and take proper measures.
-                        ancestors = cur.ancestors()
-                        try:
-                            idx = ancestors.index(m)
-                            # this is an ancestor if we have an index. Otherwise, it will raise ValueError.
-                            # We need to close out of the ancestors we have left. A slice accomplishes that.
-                            for ancestor in reversed(ancestors[idx:]):
-                                out += ancestor.exit()
+    @classmethod
+    def decode(cls, src: str, encoding: str, errors: str = "strict"):
+        if (found := getattr(cls, f"decode_{encoding}", None)):
+            return found(src, errors)
+        else:
+            raise MudStringError(f"Invalid Encoding: {encoding}")
 
-                        except ValueError:
-                            # this is not an ancestor. Exit all ancestors and cur.
-                            out += cur.exit()
-                            for ancestor in reversed(ancestors):
-                                out += ancestor.exit()
+    @classmethod
+    def decode_pennmush(cls, src, errors: str = "strict"):
+        markup = list()
+        idx = list()
 
-                        # now we enter the new tag.
-                        cur = m
-                        for ancestor in m.ancestors():
-                            out += ancestor.enter()
-                        out += m.enter()
-                        out += c
+        state, index = 0, None
+        mstack = list()
+        tag = ""
+        counter = -1
+
+        for s in src:
+            if state == 0:
+                if s == AnsiMarkup.TAG_START:
+                    state = 1
                 else:
-                    # We are not inside of a markup tag. Well, that changes now.
-                    cur = m
-                    for ancestor in m.ancestors():
-                        out += ancestor.enter()
-                    out += m.enter()
-                    out += c
+                    idx.append((index, s))
+            elif state == 1:
+                # Encountered a TAG START...
+                tag = s
+                state = 2
+            elif state == 2:
+                # we are just inside a tag. if it begins with / this is a closing. else, opening.
+                if s == "/":
+                    state = 4
+                else:
+                    state = 3
+                    counter += 1
+                    mark = Markup(index, tag, "pennmush")
+                    markup.append(mark)
+                    index = mark
+                    mark.start_text += s
+                    mstack.append(mark)
+            elif state == 3:
+                # we are inside an opening tag, gathering text. continue until TAG_END.
+                if s == AnsiMarkup.TAG_END:
+                    state = 0
+                else:
+                    mstack[-1].start_text += s
+            elif state == 4:
+                # we are inside a closing tag, gathering text. continue until TAG_END.
+                if s == AnsiMarkup.TAG_END:
+                    state = 0
+                    mark = mstack.pop()
+                    index = mark.parent
+                else:
+                    mstack[-1].end_text += s
+
+        for m in markup:
+            m.setup(errors)
+
+        return cls(idx=idx)
+
+    @classmethod
+    def decode_circle(cls, src: str, errors: str = "strict"):
+        idx = list()
+        current = None
+        remaining = src
+        escaped = None
+
+        while len(remaining):
+            if escaped:
+                if escaped == remaining[0]:
+                    idx.append((current, remaining[0]))
+                    remaining = remaining[1:]
+                elif escaped == '&':
+                    if (match := CIRCLE_REGEX["fg_ansi"].match(remaining)):
+                        current = Markup(current, 'c', encoding="circle")
+                        current.start_text = remaining[0]
+                        current.end_text = "fg_ansi"
+                        current.setup()
+                        remaining = remaining[1:]
+                elif escaped == '`':
+                    if (match := CIRCLE_REGEX["xterm_number"].match(remaining)):
+                        current = Markup(current, 'c', encoding="circle")
+                        current.start_text = match.group(0)
+                        current.end_text = "xterm_number"
+                        current.setup()
+                        remaining = remaining[match.end(0):]
+                    elif (match := CIRCLE_REGEX["xterm_predef"].match(remaining)):
+                        current = Markup(current, 'c', encoding="circle")
+                        current.start_text = match.group(0)
+                        current.end_text = "xterm_predef"
+                        current.setup()
+                        remaining = remaining[match.end(0):]
+                elif escaped == '}':
+                    if (match := CIRCLE_REGEX["blink_fg_ansi"].match(remaining)):
+                        current = Markup(current, 'c', encoding="circle")
+                        current.start_text = remaining[0]
+                        current.end_text = "blink_fg_ansi"
+                        current.setup()
+                        remaining = remaining[1:]
+                elif escaped == '^':
+                    if (match := CIRCLE_REGEX["bg_ansi"].match(remaining)):
+                        current = Markup(current, 'c', encoding="circle")
+                        current.start_text = remaining[0]
+                        current.end_text = "bg_ansi"
+                        current.setup()
+                        remaining = remaining[1:]
+                escaped = None
+            elif remaining[0] in ('&', '`', '}', '^'):
+                escaped = remaining[0]
+                remaining = remaining[1:]
             else:
-                # we are moving into a None markup...
-                if cur:
-                    # exit current markup.
-                    out += cur.exit()
-                    for ancestor in reversed(cur.ancestors()):
-                        out += ancestor.exit()
-                    out += c
-                    cur = m
-                else:
-                    # from no markup to no markup. Just append the character.
-                    out += c
+                idx.append((current, remaining[0]))
+                remaining = remaining[1:]
 
-        if cur:
-            out += cur.exit()
-            for ancestor in reversed(cur.ancestors()):
-                out += ancestor.exit()
+        if escaped:
+            idx.append((current, escaped))
 
-        return out
+        return cls(idx=idx)
+
+    @classmethod
+    def decode_ansi(cls, src: str, mxp=False):
+        """
+        This will eventually be the opposite of MudString.render().
+        """
+
+    @classmethod
+    def ansi_fun(cls, code: str, text: Union["MudString", str]):
+        """
+        This constructor is used to create a MudString from a PennMUSH style ansi() call, such as: ansi(hr,texthere!)
+        """
+        if isinstance(text, cls):
+            output = text.encode(encoding="pennmush")
+            return cls.decode_pennmush(f"{AnsiMarkup.TAG_START}c{code}{AnsiMarkup.TAG_END}{output}{AnsiMarkup.TAG_START}/c{AnsiMarkup.TAG_END}")
+        elif isinstance(text, str):
+            code = code.strip()
+            mark = Markup(None, 'c', "pennmush")
+            mark.start_text = code
+            mark.setup("strict")
+            return cls(idx=[(mark, c) for c in text])
+
+    @classmethod
+    def from_html(cls, text: Union["MudString", str], tag: str, **kwargs):
+        tag = tag.strip()
+        attrs = ' '.join([f'{k}="{html.escape(v)}"' for k, v in kwargs.items()])
+        if isinstance(text, cls):
+            return cls(f"{AnsiMarkup.TAG_START}p{tag} {attrs}{AnsiMarkup.TAG_END}{text}{AnsiMarkup.TAG_START}p/{tag} {attrs}{AnsiMarkup.TAG_END}")
+        else:
+            mark = Markup(None, 'p', "pennmush")
+            mark.start_text = f"{tag} {attrs}" if attrs else tag
+            mark.setup("strict")
+            return cls(idx=[(mark, c) for c in text])
+
+    @classmethod
+    def send_menu(cls, text: str, commands=None):
+        if commands is None:
+            commands = []
+        hints = '|'.join(a[1] for a in commands)
+        cmds = '|'.join(a[0] for a in commands)
+        return cls.from_html(text=text, tag='SEND', href=cmds, hint=hints)
