@@ -1,5 +1,5 @@
 """
-# NOTE: Copied and modified from Evennia to use MudString instead of Evennia's MudString.
+# NOTE: Copied and modified from Evennia to use Text instead of Evennia's Text.
 
 This is an advanced ASCII table creator. It was inspired by Prettytable
 (https://code.google.com/p/prettytable/) but shares no code and is considerably
@@ -103,7 +103,7 @@ If the height is restricted, cells will be restricted from expanding
 vertically. This will lead to text contents being cropped. Each cell
 can only shrink to a minimum width and height of 1.
 
-`EvTable` is intended to be used with `MudString` for supporting ANSI-coloured
+`EvTable` is intended to be used with `Text` for supporting ANSI-coloured
 string types.
 
 When a cell is auto-wrapped across multiple lines, ANSI-reset sequences will be
@@ -118,7 +118,7 @@ appear on both sides of the table string.
 
 from textwrap import TextWrapper
 from copy import deepcopy, copy
-from .mudstring import MudString
+from .text import Text
 
 _DEFAULT_WIDTH = 78
 
@@ -133,7 +133,7 @@ def is_iter(obj):
 
 
 def d_len(obj):
-    if isinstance(obj, MudString):
+    if isinstance(obj, Text):
         return len(obj)
     if isinstance(obj, str):
         return len(obj)
@@ -144,20 +144,20 @@ def d_len(obj):
 
 def _to_ansi(obj):
     """
-    convert to MudString.
+    convert to Text.
 
     Args:
         obj (str): Convert incoming text to
-            be ANSI aware MudStrings.
+            be ANSI aware Texts.
     """
-    if isinstance(obj, MudString):
+    if isinstance(obj, Text):
         return obj
     if isinstance(obj, str):
-        return MudString(obj)
+        return Text.from_plain(obj)
     if is_iter(obj):
         return [_to_ansi(o) for o in obj]
 
-    return MudString(str(obj))
+    return Text.from_plain(str(obj))
 
 
 _whitespace = "\t\n\x0b\x0c\r "
@@ -180,7 +180,7 @@ class ANSITextWrapper(TextWrapper):
         """
         return text
 
-    # TODO: Ignore expand_tabs/replace_whitespace until MudString handles them.
+    # TODO: Ignore expand_tabs/replace_whitespace until Text handles them.
     # - don't remove this code. /Griatch
     #        if self.expand_tabs:
     #            text = text.expandtabs()
@@ -205,8 +205,8 @@ class ANSITextWrapper(TextWrapper):
         otherwise.
         """
         # NOTE-PYTHON3: The following code only roughly approximates what this
-        #               function used to do. Regex splitting on MudStrings is
-        #               dropping ANSI codes, so we're using MudString.split
+        #               function used to do. Regex splitting on Texts is
+        #               dropping ANSI codes, so we're using Text.split
         #               for the time being.
         #
         #               A less hackier solution would be appreciated.
@@ -284,7 +284,7 @@ class ANSITextWrapper(TextWrapper):
             # Convert current line back to a string and store it in list
             # of all lines (return value).
             if cur_line:
-                lines.append(indent + MudString().join(cur_line))
+                lines.append(indent + Text().join(cur_line))
         return lines
 
 
@@ -546,7 +546,7 @@ class EvCell(object):
         for line in data:
             if 0 < width < d_len(line):
                 # replace_whitespace=False, expand_tabs=False is a
-                # fix for MudString not supporting expand_tabs/translate
+                # fix for Text not supporting expand_tabs/translate
                 adjusted_data.extend(
                     [
                         part
@@ -721,16 +721,16 @@ class EvCell(object):
             + max(0, self.border_right - 1)
         )
 
-        vfill = MudString(self.corner_top_left_char) if left else ""
+        vfill = Text(self.corner_top_left_char) if left else ""
         v = self.border_top_char * cwidth
         vfill += v
-        vfill += MudString(self.corner_top_right_char) if right else ""
+        vfill += Text(self.corner_top_right_char) if right else ""
         top = [vfill for _ in range(self.border_top)]
 
-        vfill = MudString(self.corner_bottom_left_char) if left else ""
+        vfill = Text(self.corner_bottom_left_char) if left else ""
         v = self.border_bottom_char * cwidth
         vfill += v
-        vfill += MudString(self.corner_bottom_right_char) if right else ""
+        vfill += Text(self.corner_bottom_right_char) if right else ""
         bottom = [vfill for _ in range(self.border_bottom)]
 
         return top + [left + line + right for line in data] + bottom
@@ -931,12 +931,12 @@ class EvCell(object):
 
     def __repr__(self):
         self.formatted = self._reformat()
-        return str(MudString("<EvCel %s>" % self.formatted))
+        return str(Text("<EvCel %s>" % self.formatted))
 
     def __str__(self):
         "returns cell contents on string form"
         self.formatted = self._reformat()
-        return str(MudString("\n").join(self.formatted))
+        return str(Text("\n").join(self.formatted))
 
 
 # EvColumn class
@@ -1550,7 +1550,7 @@ class EvTable(object):
             cell_data = [cell.get() for cell in cell_row]
             cell_height = min(len(lines) for lines in cell_data)
             for iline in range(cell_height):
-                yield MudString("").join(_to_ansi(celldata[iline] for celldata in cell_data))
+                yield Text("").join(_to_ansi(celldata[iline] for celldata in cell_data))
 
     def add_header(self, *args, **kwargs):
         """
@@ -1753,7 +1753,11 @@ class EvTable(object):
         return str(self.to_ansistring())
 
     def to_ansistring(self):
-        return MudString("\n").join([line for line in self._generate_lines()])
+        return Text("\n").join([line for line in self._generate_lines()])
+
+    def render(self, ansi: bool = True, xterm256: bool = True, downgrade: bool = True):
+        return self.to_ansistring().render(ansi, xterm256, downgrade)
+
 
 def _test():
     """Test"""
