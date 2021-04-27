@@ -94,12 +94,9 @@ class Text:
 
     def disassemble(self) -> List[Tuple[Optional[Markup], str]]:
         idx = list()
-        spans = list(self.spans)
-        span = spans.pop(0)
-        for i, c in enumerate(self.plain):
-            if i > span.end:
-                span = spans.pop(0)
-            idx.append((span.style, c))
+        for i, span in enumerate(self.spans):
+            for c in self.plain[span.start:span.end]:
+                idx.append((span.style, c))
         return idx
 
     @classmethod
