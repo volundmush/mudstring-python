@@ -25,7 +25,7 @@ def run_test():
 
     c.print(table)
 
-    print(c.export_mud(mxp=True))
+    print(repr(c.export_mud(mxp=True)))
 
 if __name__ == "__main__":
     run_test()

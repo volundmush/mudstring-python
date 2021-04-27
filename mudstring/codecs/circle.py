@@ -4,6 +4,7 @@ from .. markup import Markup, MXPMarkup, ColorMarkup
 from typing import Union
 from collections import defaultdict
 
+
 CIRCLE_REGEX = {
     "fg_ansi": re.compile(r"^[xrgObpcwzRGYBPCWvVuUiIsSdD]"),
     "blink_fg_ansi": re.compile(r"^[xrgObpcwzRGYBPCW]"),
