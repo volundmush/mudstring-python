@@ -7,12 +7,13 @@ def run_test():
     c = Console(record=True)
     from rich.style import Style
     from rich.table import Table
+    from rich import box
     s = Style(color="red", tag="SEND", xml_attr={"href": "dothis"})
     t = Text("This is some text!", style=s)
     c.print(t)
     print(repr(c.export_mud(mxp=True)))
 
-    table = Table(title="Star Wars Movies")
+    table = Table(title="Star Wars Movies", box=box.ASCII, border_style="yellow")
 
     table.add_column("Released", justify="right", style="cyan", no_wrap=True)
     table.add_column("Title", style="magenta")
