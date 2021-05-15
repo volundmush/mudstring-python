@@ -1,26 +1,14 @@
-from ..text import Text, TextError, Span
-from ..markup import Markup, MXPMarkup, ColorMarkup, _CODES
+from ..patches.style import MudStyle, ProtoStyle
 from ..colors import COLORS
 from colored.hex import HEX
-from typing import Union
+from typing import Union, Tuple, List, Optional
+from rich.text import Text, Span, Segment
+from rich.color import Color
 import html
 import re
 from xml.etree import ElementTree as ET
 from collections import defaultdict
-
-TAG_START = '\002'
-TAG_END = '\003'
-MARKUP_START = TAG_START
-MARKUP_END = TAG_END
-
-
-NEW_MATCH = {
-    _CODES.CS_HEX: re.compile(r"^#(?P<data>[0-9A-F]{6})$", flags=re.IGNORECASE),
-    _CODES.CS_RGBHEX: re.compile(r"^<#(?P<data>[0-9A-F]{6})>$", flags=re.IGNORECASE),
-    _CODES.CS_RGB: re.compile(r"^<(?P<red>[0-9]{1,3}) +(?P<green>[0-9]{1,3}) +(?P<blue>[0-9]{1,3})>$"),
-    _CODES.CS_NAME: re.compile(r"^\+(?P<name>\w+)\b", flags=re.IGNORECASE)
-}
-
+from enum import IntFlag, IntEnum
 
 ANSI_SECTION_MATCH = {
     "letters": re.compile(r"^(?P<data>[a-z ]+)\b", flags=re.IGNORECASE),
@@ -32,14 +20,6 @@ ANSI_SECTION_MATCH = {
 }
 
 
-CHAR_MAP = {
-    'f': "flash",
-    'h': "hilite",
-    'i': "invert",
-    'u': "underscore"
-}
-
-
 STYLE_REVERSE = {
     1: "h",
     2: "i",
@@ -47,20 +27,70 @@ STYLE_REVERSE = {
     8: "u"
 }
 
+class StyleMap(IntFlag):
+    BOLD = 1
+    INVERSE = 2
+    FLASH = 4
+    UNDERLINE = 8
+
+
+class BgMode(IntEnum):
+    NONE = 0
+    FG = 1
+    BG = 2
+
+
+CHAR_MAP = {
+    'f': "flash",
+    'h': "bold",
+    'i': "reverse",
+    'u': "underline"
+}
+
 
 BASE_COLOR_MAP = {
     'd': -1,
-    'x': 30,
-    'r': 31,
-    'g': 32,
-    'y': 33,
-    'b': 34,
-    'm': 35,
-    'c': 36,
-    'w': 37
+    'x': 0,
+    'r': 1,
+    'g': 2,
+    'y': 3,
+    'b': 4,
+    'm': 5,
+    'c': 6,
+    'w': 7
 }
 
 BASE_COLOR_REVERSE = {v: k for k, v in BASE_COLOR_MAP.items()}
+
+def _process_ground(codes: str, bg: bool = False) -> Tuple[str, Tuple[str, BgMode, object, object]]:
+    matched = False
+    ground = BgMode.BG if bg else BgMode.FG
+    for k, v in ANSI_SECTION_MATCH.items():
+        if k == "letters" and ground == BgMode.BG:
+            # Letters are not allowed immediately following a /
+            continue
+        if (match := v.match(codes)):
+            codes = codes[match.end():]
+            matched = True
+            if k == "letters" and ground != BgMode.BG:
+                # Letters are not allowed immediately following a /
+                return codes, (k, BgMode.NONE, match.groupdict()["data"], match.group(0))
+            if k == "numbers":
+                data = match.groupdict()["data"]
+                number = abs(int(data))
+                if number > 255:
+                    raise TextError(match.group(0))
+                return codes, (k, ground, number, match.group(0))
+            if k == "name":
+                return codes, (k, ground, match.groupdict()["data"].lower(), match.group(0))
+            elif k in ("hex1", "hex2"):
+                return codes, (k, ground, '#' + match.groupdict()["data"].upper(), match.group(0))
+            elif k == "rgb":
+                data = match.groupdict()
+                hex = f"#{int(data['red']):2X}{int(data['green']):2X}{int(data['blue']):2X}"
+                return codes, (k, ground, hex, match.group(0))
+    if not matched:
+        raise TextError(codes)
 
 
 def separate_codes(codes: str, errors: str = "strict"):
@@ -80,70 +110,18 @@ def separate_codes(codes: str, errors: str = "strict"):
             elif codes[0] in ('/', '!'):
                 continue
             else:
-                matched = False
-                for k, v in ANSI_SECTION_MATCH.items():
-                    if k == "letters":
-                        # Letters are not allowed immediately following a /
-                        continue
-                    if (match := v.match(codes)):
-                        codes = codes[match.end():]
-                        matched = True
-                        if k == "numbers":
-                            data = match.groupdict()["data"]
-                            number = abs(int(data))
-                            if number > 255:
-                                raise TextError(match.group(0))
-                            yield (k, "bg", number, match.group(0))
-                            break
-                        if k == "name":
-                            yield (k, "bg", match.groupdict()["data"].lower(), match.group(0))
-                            break
-                        elif k in ("hex1", "hex2"):
-                            yield (k, "bg", '#' + match.groupdict()["data"].upper(), match.group(0))
-                            break
-                        elif k == "rgb":
-                            data = match.groupdict()
-                            hex = f"#{int(data['red']):2X}{int(data['green']):2X}{int(data['blue']):2X}"
-                            yield (k, "bg", hex, match.group(0))
-                            break
-                if not matched:
-                    raise TextError(codes)
+                remaining, result = _process_ground(codes, True)
+                codes = remaining
+                yield result
 
         elif codes[0].isspace():
             codes = codes[1:]
             continue
         else:
+            remaining, result = _process_ground(codes, False)
+            codes = remaining
+            yield result
             matched = False
-            for k, v in ANSI_SECTION_MATCH.items():
-                if (match := v.match(codes)):
-                    codes = codes[match.end():]
-                    matched = True
-                    if k == "letters":
-                        # letters are the one exception to most rules:
-                        # they can be either fg or BG.
-                        yield (k, None, match.groupdict()["data"], match.group(0))
-                        break
-                    if k == "name":
-                        yield (k, "fg", match.groupdict()["data"].lower(), match.group(0))
-                        break
-                    if k == "numbers":
-                        data = match.groupdict()["data"]
-                        number = abs(int(data))
-                        if number > 255:
-                            raise TextError(match.group(0))
-                        yield (k, "fg", number, match.group(0))
-                        break
-                    elif k in ("hex1", "hex2"):
-                        yield (k, "fg", '#' + match.groupdict()["data"], match.group(0))
-                        break
-                    elif k == "rgb":
-                        data = match.groupdict()
-                        hexcodes = f"#{int(data['red']):2X}{int(data['green']):2X}{int(data['blue']):2X}"
-                        yield (k, "fg", hexcodes, match.group(0))
-                        break
-
-            if not matched:
-                raise TextError(codes)
 
 
 def test_separate(codes: str):
@@ -151,7 +129,7 @@ def test_separate(codes: str):
         print(code)
 
 
-def apply_color_rule(mark: ColorMarkup, rule_tuple):
+def apply_color_rule(mark: ProtoStyle, rule_tuple):
     mode, g, data, original = rule_tuple
     if mode == "letters":
         for c in data:
@@ -161,13 +139,13 @@ def apply_color_rule(mark: ColorMarkup, rule_tuple):
                 continue
 
             if (bit := CHAR_MAP.get(c, None)):
-                mark.apply_style(bit)
+                setattr(mark, bit, True)
             elif (bit := CHAR_MAP.get(c.lower(), None)):
-                mark.remove_style(bit)
+                setattr(mark, bit, False)
             elif (code := BASE_COLOR_MAP.get(c, None)):
-                mark.set_ansi_fg(code)
+                setattr(mark, "color", Color.from_ansi(code))
             elif (code := BASE_COLOR_MAP.get(c.lower(), None)):
-                mark.set_ansi_bg(code + 10)
+                setattr(mark, "bgcolor", Color.from_ansi(code))
             else:
                 pass  # I dunno what we got passed, but it ain't relevant.
 
@@ -189,12 +167,12 @@ def apply_color_rule(mark: ColorMarkup, rule_tuple):
             mark.set_xterm_bg(int(HEX(data)))
 
 
-def apply_rules(mark: ColorMarkup, rules: str):
+def apply_rules(mark: ProtoStyle, rules: str):
     for res in separate_codes(rules):
         apply_color_rule(mark, res)
 
 
-def serialize_colors(c: ColorMarkup) -> str:
+def serialize_colors(s: MudStyle) -> str:
     if c.reset:
         return 'n'
 
@@ -220,7 +198,7 @@ def serialize_colors(c: ColorMarkup) -> str:
     return output
 
 
-def enter_tag(m: Markup) -> str:
+def enter_tag(s: MudStyle) -> str:
     if isinstance(m, ColorMarkup):
         return f"{TAG_START}c{serialize_colors(m)}{TAG_END}"
     elif isinstance(m, MXPMarkup):
@@ -233,7 +211,7 @@ def enter_tag(m: Markup) -> str:
         return ''
 
 
-def exit_tag(m: Markup) -> str:
+def exit_tag(s: MudStyle) -> str:
     if isinstance(m, ColorMarkup):
         return f"{TAG_START}c/{TAG_END}"
     elif isinstance(m, MXPMarkup):
@@ -248,7 +226,7 @@ def encode(mstring: Text, errors: str = "strict") -> str:
     cur = None
 
     for i, span in enumerate(mstring.spans):
-        if isinstance(span.style, Markup):
+        if isinstance(span.style, MudStyle):
             if cur:
                 # we are already inside of a markup!
                 if span.style is cur:
@@ -325,70 +303,52 @@ def encode(mstring: Text, errors: str = "strict") -> str:
 
 
 def decode(src, errors: str = "strict") -> Text:
-    markup = list()
-    idx = list()
+    current = ProtoStyle()
+    state = 0
+    remaining = src
+    segments: List[Tuple[str, MudStyle]] = list()
+    tag = None
 
-    state, index = 0, None
-    mstack = list()
-    tag = ""
-    counter = -1
-    data = defaultdict(str)
-
-    for s in src:
+    while len(remaining):
         if state == 0:
-            if s == TAG_START:
+            idx_start = remaining.find('\002')
+            if idx_start != -1:
+                segments.append((remaining[:idx_start], current.convert()))
+                remaining = remaining[idx_start+1:]
                 state = 1
             else:
-                idx.append((index, s))
+                segments.append((remaining, current.convert()))
+                remaining = ''
         elif state == 1:
-            # Encountered a TAG START...
-            tag = s
+            # encountered a TAG START...
+            tag = remaining[0]
+            remaining = remaining[1:]
             state = 2
         elif state == 2:
-            # we are just inside a tag. if it begins with / this is a closing. else, opening.
-            if s == "/":
-                state = 4
-            else:
-                state = 3
-                counter += 1
-                if tag == 'p':
-                    mark = MXPMarkup(index)
-                elif tag == 'c':
-                    mark = ColorMarkup(index)
+            # we are inside a tag. hoover up all data up to TAG_END...
+            idx_end = remaining.find('\003')
+            opening = True
+            if idx_end != -1:
+                tag_data = remaining[:idx_end]
+                remaining = remaining[idx_end+1:]
+                if tag_data and tag_data[0] == '/':
+                    opening = False
+                    tag_data = tag_data[1:]
+                if opening:
+                    current = ProtoStyle(parent=current)
+                    if tag == 'p':
+                        apply_mxp(current, tag_data)
+                    elif tag == 'c':
+                        current.inherit_ansi()
+                        apply_rules(current, tag_data)
                 else:
-                    raise TextError(f"Unsupported PennMush markup tag: {tag}")
-                markup.append(mark)
-                index = mark
-                data[mark] += s
-                mstack.append(mark)
-        elif state == 3:
-            # we are inside an opening tag, gathering text. continue until TAG_END.
-            if s == TAG_END:
+                    current = current.parent
                 state = 0
             else:
-                data[mstack[-1]] += s
-        elif state == 4:
-            # we are inside a closing tag, gathering text. continue until TAG_END.
-            if s == TAG_END:
-                state = 0
-                mark = mstack.pop()
-                index = mark.parent
-            else:
-                data[mstack[-1]] += s
+                # malformed data.
+                break
 
-    for m in markup:
-        if isinstance(m, ColorMarkup):
-            m.inherit_ansi()
-            apply_rules(m, data[m])
-        elif isinstance(m, MXPMarkup):
-            found = data[m]
-            tag = found
-            if ' ' in found:
-                tag, extra = found.split(' ', 1)
-            root = ET.fromstring(f'<{found}></{tag}>')
-            m.setup(root.tag, root.attrib)
-
-    return Text.assemble(idx)
+    return Text.assemble(*segments)
 
 
 def ansi_fun(code: str, text: Union[Text, str]) -> Text:
@@ -396,21 +356,24 @@ def ansi_fun(code: str, text: Union[Text, str]) -> Text:
     This constructor is used to create a Text from a PennMUSH style ansi() call, such as: ansi(hr,texthere!)
     """
     code = code.strip()
-    mark = ColorMarkup()
+    mark = ProtoStyle()
     apply_rules(mark, code)
     if isinstance(text, Text):
-        return decode(f"{enter_tag(mark)}{encode(text)}{exit_tag(mark)}")
+        t = [Segment(text.plain[s.start:s.end-s.start], s.style) for s in text.spans]
+        return Text.assemble(*t, style=mark.convert())
     elif isinstance(text, str):
-        return Text(src=text, spans=[Span(0, len(text), mark)])
+        return Text(text=text, style=mark.convert())
 
 
 def from_html(text: Union[Text, str], tag: str, **kwargs) -> Text:
-    mark = MXPMarkup()
-    mark.setup(tag.strip(), kwargs)
+    mark = ProtoStyle()
+    mark.tag = tag
+    mark.xml_attr = kwargs
     if isinstance(text, Text):
-        return decode(f"{enter_tag(mark)}{encode(text)}{exit_tag(mark)}")
-    else:
-        return Text(src=text, spans=[Span(0, len(text), mark)])
+        t = [Segment(text.plain[s.start:s.end - s.start], s.style) for s in text.spans]
+        return Text.assemble(*t, style=mark.convert())
+    elif isinstance(text, str):
+        return Text(text=text, style=mark.convert())
 
 
 def send_menu(text: str, commands=None) -> Text:
@@ -419,7 +382,3 @@ def send_menu(text: str, commands=None) -> Text:
     hints = '|'.join(a[1] for a in commands)
     cmds = '|'.join(a[0] for a in commands)
     return from_html(text=text, tag='SEND', href=cmds, hint=hints)
-
-
-def install():
-    Text.install_codec("pennmush", encode, decode)

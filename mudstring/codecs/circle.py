@@ -1,7 +1,7 @@
 import re
-from .. text import Text
-from .. markup import Markup, MXPMarkup, ColorMarkup
-from typing import Union
+from ..patches.style import MudStyle, ProtoStyle
+from rich.text import Text
+from typing import Union, List, Tuple, Iterable, Optional
 from collections import defaultdict
 
 
@@ -14,70 +14,93 @@ CIRCLE_REGEX = {
 }
 
 
-def apply_ansi_rule(m: ColorMarkup, mode: str, rule: str):
+def find_first(within: str, chars: Iterable[str]):
+    results = list()
+    for c in chars:
+        f = within.find(c)
+        if f != -1:
+            results.append(f)
+    if results:
+        return min(results)
+    else:
+        return -1
+
+
+def apply_ansi_rule(proto: ProtoStyle, mode: str, rule: str):
     pass
 
 
 def decode(src: str, errors: str = "strict") -> Text:
-    idx = list()
-    markups = list()
-    current = None
+    current = ProtoStyle()
+    segment: str = ""
+
     remaining = src
-    escaped = None
-    data = dict()
+    escaped: Optional[str] = None
+    segments: List[Tuple[str, MudStyle]] = list()
 
     while len(remaining):
         if escaped:
             if escaped == remaining[0]:
-                idx.append((current, remaining[0]))
+                segment += remaining[0]
                 remaining = remaining[1:]
             elif escaped == '&':
                 if (match := CIRCLE_REGEX["fg_ansi"].match(remaining)):
-                    current = ColorMarkup(current)
-                    markups.append(current)
-                    data[current] = {'mode': "fg_ansi", 'rule': remaining[0]}
+                    if segment:
+                        segments.append((segment, current.convert()))
+                        segment = ''
+                    current = ProtoStyle(current)
+                    if remaining[0].upper() != 'D':
+                        current.inherit_ansi()
+                        apply_ansi_rule(current, "fg_ansi", remaining[0])
+                    else:
+                        current.reset = True
                     remaining = remaining[1:]
             elif escaped == '`':
                 if (match := CIRCLE_REGEX["xterm_number"].match(remaining)):
-                    current = ColorMarkup(current)
-                    markups.append(current)
-                    data[current] = {'mode': 'xterm_number', 'rule': match.group(0)}
+                    if segment:
+                        segments.append((segment, current.convert()))
+                        segment = ''
+                    current = ProtoStyle(current)
+                    apply_ansi_rule(current, "xterm_number", match.group(0))
                     remaining = remaining[match.end(0):]
                 elif (match := CIRCLE_REGEX["xterm_predef"].match(remaining)):
-                    current = ColorMarkup(current)
-                    markups.append(current)
-                    data[current] = {'mode': 'xterm_predef', 'rule': match.group(0)}
+                    if segment:
+                        segments.append((segment, current.convert()))
+                        segment = ''
+                    current = ProtoStyle(current)
+                    apply_ansi_rule(current, "xterm_predef", match.group(0))
                     remaining = remaining[match.end(0):]
             elif escaped == '}':
                 if (match := CIRCLE_REGEX["blink_fg_ansi"].match(remaining)):
-                    current = ColorMarkup(current)
-                    markups.append(current)
-                    data[current] = {'mode': 'blink_fg_ansi', 'rule': remaining[0]}
+                    if segment:
+                        segments.append((segment, current.convert()))
+                        segment = ''
+                    current = ProtoStyle(current)
+                    apply_ansi_rule(current, "blink_fg_ansi", remaining[0])
                     remaining = remaining[1:]
             elif escaped == '^':
                 if (match := CIRCLE_REGEX["bg_ansi"].match(remaining)):
-                    current = ColorMarkup(current)
-                    markups.append(current)
-                    data[current] = {'mode': 'bg_ansi', 'rule': remaining[0]}
+                    if segment:
+                        segments.append((segment, current.convert()))
+                        segment = ''
+                    current = ProtoStyle(current)
+                    apply_ansi_rule(current, "bg_ansi", remaining[0])
                     remaining = remaining[1:]
             escaped = None
-        elif remaining[0] in ('&', '`', '}', '^'):
-            escaped = remaining[0]
-            remaining = remaining[1:]
         else:
-            idx.append((current, remaining[0]))
-            remaining = remaining[1:]
+            loc = find_first(remaining, ('&', '`', '}', '^'))
+            if loc != -1:
+                escaped = remaining[loc]
+                segment += remaining[:loc]
+                remaining = remaining[loc+1:]
+            else:
+                segment += remaining
+                remaining = ''
 
-    if escaped:
-        idx.append((current, escaped))
+    if segment:
+        segments.append((segment, current.convert()))
 
-    for m in markups:
-        if isinstance(m, ColorMarkup):
-            m.inherit_ansi()
-            d = data[m]
-            apply_ansi_rule(m, d['mode'], d['rule'])
-
-    return Text.assemble(idx)
+    return Text.assemble(*[(t, s) for t, s in segments])
 
 
 def encode(src: Text) -> str:
