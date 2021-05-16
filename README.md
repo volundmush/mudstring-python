@@ -22,11 +22,10 @@ Please see the included LICENSE.txt for the legalese.
 ## INTRO
 MUD (Multi-User Dungeon) games and their brethren like MUSH, MUX, MUCK, and MOO (look 'em up!) use various ANSI features to provide colors to clients. Sadly there aren't many libraries out there which allow advanced manipulation of such text which preserve the formatting already applied to it. This attempts to address this problem.
 
-mudstring is built upon the existing library, rich, using monkey-patching to hack in support for MXP (Mud eXtension Protocol). So, in order to use this library effectively, one must familiarize themselves with Rich. Rich is awesome, so be sure and do that soon.
+mudstring is built upon the existing library, [rich](https://github.com/willmcgugan/rich), using monkey-patching to hack in support for MXP (Mud eXtension Protocol). So, in order to use this library effectively, one must familiarize themselves with Rich. Rich is awesome, so be sure and do that soon.
 
 ## FEATURES
   * Everything Rich can do. Seriously, check it out...
-  * Also allows the support features of enrich to work.
   * MXP Support.
   * Encodings library, containing fully-working examples for how to implement various ANSI systems used by existing games.
   
@@ -41,7 +40,23 @@ mudstring.install()
 ```
 This will monkey-patch Rich for this process, replacing a few classes with ones from MudString in a way that will still allow Rich to do everything it normally does. From here on out, though, importing from Rich will net you the patched versions of classes like Style, Text, and Console.
 
-Rich can then be used as one normally uses Rich, however Style objects can now be created with MXP Tags+Attributes, and the Console's .export_mud() method is used to render everything that was Console-printed to a single string, ready to be sent to the client.
+Afterwards, instantiating a MudConsole and directing some output to an output buffer is this easy.
+
+```python
+# this will get the MudCOnsole and MudText if install() has been run!
+from rich import Console
+from rich.text import Text
+from mudstring.util import OutBuffer
+
+buffer = bytearray()
+
+con = Console(color_system="256", mxp=True, soft_wrap=True)
+
+con.print(Text("Have some red text!", style="red"))
+```
+Afterwards, `buffer` will contain the formatted red text.
+
+Note that MudString's Text class for Rich implements a great deal more of the Python String API than Rich's original version, allowing for advanced text formatting - though, unfortunately, no f-strings or str.format() - it won't preserve the styling...
 
 ## FAQ 
   __Q:__ This is cool! How can I help?  
@@ -54,7 +69,7 @@ Rich can then be used as one normally uses Rich, however Style objects can now b
   __A:__ Coming soon...
 
 ## Special Thanks
-  * The absolute lunatics who wrote PennMUSH's ANSI library.
+  * The absolutely awesome lunatics who wrote PennMUSH's ANSI library.
   * The Evennia Project.
   * All of my Patrons on Patreon.
   * Anyone who contributes to this project or my other ones.

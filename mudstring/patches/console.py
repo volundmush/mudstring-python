@@ -3,7 +3,6 @@ from rich import console
 from rich.segment import Segment
 from typing import List, Iterable
 from .style import MudStyle
-from enrich.console import Console
 
 OLD_OPTIONS = console.ConsoleOptions
 
@@ -34,7 +33,11 @@ class MudConsoleOptions(OLD_OPTIONS):
 OLD_CONSOLE = console.Console
 
 
-class MudConsole(Console):
+class MudConsole(console.Console):
+
+    def __init__(self, **kwargs):
+        self.mxp = kwargs.pop('mxp', False)
+        super().__init__(**kwargs)
 
     def export_mud(self, *, clear: bool = True, styles: bool = True, mxp: bool = False) -> str:
         """Generate text from console contents (requires record=True argument in constructor).
@@ -67,3 +70,41 @@ class MudConsole(Console):
             if clear:
                 del self._record_buffer[:]
         return text
+
+    def _render_buffer(self, buffer: Iterable[Segment]) -> str:
+        """Render buffered output, and clear buffer."""
+        output: List[str] = []
+        append = output.append
+        color_system = self._color_system
+        legacy_windows = self.legacy_windows
+        if self.record:
+            with self._record_buffer_lock:
+                self._record_buffer.extend(buffer)
+        not_terminal = not self.is_terminal
+        if self.no_color and color_system:
+            buffer = Segment.remove_color(buffer)
+        for text, style, control in buffer:
+            if style:
+                if hasattr(style, '_tag'):
+                    append(
+                        style.render(
+                            text,
+                            color_system=color_system,
+                            legacy_windows=legacy_windows,
+                            mxp=self.mxp,
+                            links=False
+                        )
+                    )
+                else:
+                    append(
+                        style.render(
+                            text,
+                            color_system=color_system,
+                            legacy_windows=legacy_windows,
+                        )
+                    )
+            elif not (not_terminal and control):
+                append(text)
+
+        rendered = "".join(output)
+        return rendered

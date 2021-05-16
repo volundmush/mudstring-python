@@ -1,3 +1,2 @@
 colored
 rich
-enrich
