@@ -50,7 +50,9 @@ from mudstring.util import OutBuffer
 
 buffer = bytearray()
 
-con = Console(color_system="256", mxp=True, soft_wrap=True)
+out = OutBuffer(buffer)
+
+con = Console(color_system="256", mxp=True, soft_wrap=True, file=out)
 
 con.print(Text("Have some red text!", style="red"))
 ```
