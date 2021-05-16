@@ -3,6 +3,7 @@ from rich import console
 from rich.segment import Segment
 from typing import List, Iterable
 from .style import MudStyle
+from enrich.console import Console
 
 OLD_OPTIONS = console.ConsoleOptions
 
@@ -33,7 +34,7 @@ class MudConsoleOptions(OLD_OPTIONS):
 OLD_CONSOLE = console.Console
 
 
-class MudConsole(OLD_CONSOLE):
+class MudConsole(Console):
 
     def export_mud(self, *, clear: bool = True, styles: bool = True, mxp: bool = False) -> str:
         """Generate text from console contents (requires record=True argument in constructor).
