@@ -196,6 +196,6 @@ class MudText(text.Text):
     def disassemble_bits(self) -> List[Tuple[Optional[MudStyle], str]]:
         idx = list()
         for i, span in enumerate(self.spans):
-            for c in self.plain[span.start:span.end]:
+            for c in self.plain[span.start:span.end-span.start]:
                 idx.append((span.style, c))
         return idx

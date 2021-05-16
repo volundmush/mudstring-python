@@ -1,13 +1,11 @@
 from ..patches.style import MudStyle, ProtoStyle
-from ..colors import COLORS
+from mudstring.codecs.colors import COLORS
 from colored.hex import HEX
-from typing import Union, Tuple, List, Optional
-from rich.text import Text, Span, Segment
+from typing import Union, Tuple, List
+from rich.text import Text, Segment
 from rich.color import Color
 import html
 import re
-from xml.etree import ElementTree as ET
-from collections import defaultdict
 from enum import IntFlag, IntEnum
 
 ANSI_SECTION_MATCH = {
