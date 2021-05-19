@@ -1,8 +1,8 @@
 from ..patches.style import MudStyle, ProtoStyle
-from mudstring.codecs.colors import COLORS
+from .colors import COLORS
 from colored.hex import HEX
 from typing import Union, Tuple, List
-from rich.text import Text, Segment
+from rich.text import Text, Segment, Span
 from rich.color import Color
 import html
 import re
@@ -358,9 +358,10 @@ def ansi_fun(code: str, text: Union[Text, str]) -> Text:
     apply_rules(mark, code)
     if isinstance(text, Text):
         t = [Segment(text.plain[s.start:s.end-s.start], s.style) for s in text.spans]
-        return Text.assemble(*t, style=mark.convert())
+        return Text.assemble(*t)
     elif isinstance(text, str):
-        return Text(text=text, style=mark.convert())
+        spans = [Span(0, len(text), mark.convert())]
+        return Text(text, spans=spans)
 
 
 def from_html(text: Union[Text, str], tag: str, **kwargs) -> Text:
@@ -371,7 +372,8 @@ def from_html(text: Union[Text, str], tag: str, **kwargs) -> Text:
         t = [Segment(text.plain[s.start:s.end - s.start], s.style) for s in text.spans]
         return Text.assemble(*t, style=mark.convert())
     elif isinstance(text, str):
-        return Text(text=text, style=mark.convert())
+        spans = [Span(0, len(text), mark.convert())]
+        return Text(text, spans=spans)
 
 
 def send_menu(text: str, commands=None) -> Text:

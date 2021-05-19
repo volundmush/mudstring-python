@@ -1,8 +1,10 @@
 from rich import text
 from typing import List, Set, Union, Dict, Tuple, Optional
 from . style import MudStyle
+import random
 
 OLD_TEXT = text.Text
+
 
 class MudText(text.Text):
 
