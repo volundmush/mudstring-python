@@ -1,4 +1,5 @@
 from rich import text
+from rich.text import Span, Segment
 from typing import List, Set, Union, Dict, Tuple, Optional
 from . style import MudStyle
 import random
@@ -201,3 +202,7 @@ class MudText(text.Text):
             for c in self.plain[span.start:span.end-span.start]:
                 idx.append((span.style, c))
         return idx
+
+    def disassemble(self) -> List[Segment]:
+        out = list()
+        return [Segment(self.plain[span.start:span.end-span.start], span.style) for span in self.spans]

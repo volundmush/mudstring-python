@@ -1,4 +1,5 @@
 from ..patches.style import MudStyle, ProtoStyle
+from ..patches.text import MudText
 from .colors import COLORS
 from colored.hex import HEX
 from typing import Union, Tuple, List
@@ -168,6 +169,10 @@ def apply_color_rule(mark: ProtoStyle, rule_tuple):
 def apply_rules(mark: ProtoStyle, rules: str):
     for res in separate_codes(rules):
         apply_color_rule(mark, res)
+
+
+def apply_mxp(mark: ProtoStyle, rules: str):
+    pass
 
 
 def serialize_colors(s: MudStyle) -> str:
@@ -348,20 +353,29 @@ def decode(src, errors: str = "strict") -> Text:
 
     return Text.assemble(*segments)
 
+def ansi_fun_style(code: str) -> MudStyle:
+    if code is None:
+        code = ''
+    code = code.strip()
+    mark = ProtoStyle()
+    apply_rules(mark, code)
+    return mark.convert()
+
 
 def ansi_fun(code: str, text: Union[Text, str]) -> Text:
     """
     This constructor is used to create a Text from a PennMUSH style ansi() call, such as: ansi(hr,texthere!)
     """
-    code = code.strip()
-    mark = ProtoStyle()
-    apply_rules(mark, code)
+    style = ansi_fun_style(code)
+    return ansify(style, text)
+
+
+def ansify(style: MudStyle, text: Union[Text, str]) -> MudText:
     if isinstance(text, Text):
-        t = [Segment(text.plain[s.start:s.end-s.start], s.style) for s in text.spans]
-        return Text.assemble(*t)
+        return text
     elif isinstance(text, str):
-        spans = [Span(0, len(text), mark.convert())]
-        return Text(text, spans=spans)
+        spans = [Span(0, len(text), style)]
+        return MudText(text, spans=spans)
 
 
 def from_html(text: Union[Text, str], tag: str, **kwargs) -> Text:
