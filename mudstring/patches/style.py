@@ -31,6 +31,7 @@ class MudStyle(OLD_STYLE):
                 self._xml_attr
             )
         )
+        self._null = not (self._set_attributes or self._color or self._bgcolor or self._link or self._tag)
 
     def __add__(self, style):
         if not (isinstance(style, OLD_STYLE) or style is None):
@@ -104,9 +105,9 @@ class MudStyle(OLD_STYLE):
             rendered = f"\x1b]8;id={self._link_id};{self._link}\x1b\\{rendered}\x1b]8;;\x1b\\"
         if mxp and self._tag:
             if self._xml_attr:
-                rendered = f"\x1b]4z<{self._tag} {self._xml_attr}>{rendered}\x1b]4z</{self._tag}>"
+                rendered = f"\x1b[4z<{self._tag} {self._xml_attr}>{rendered}\x1b[4z</{self._tag}>"
             else:
-                rendered = f"\x1b]4z<{self._tag}>{rendered}\x1b]4z</{self._tag}>"
+                rendered = f"\x1b[4z<{self._tag}>{rendered}\x1b[4z</{self._tag}>"
         return rendered
 
 

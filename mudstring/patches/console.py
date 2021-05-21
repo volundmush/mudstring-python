@@ -3,7 +3,7 @@ from rich import console
 from rich.segment import Segment
 from typing import List, Iterable
 from .style import MudStyle
-
+import html
 OLD_OPTIONS = console.ConsoleOptions
 
 
@@ -84,27 +84,26 @@ class MudConsole(console.Console):
         if self.no_color and color_system:
             buffer = Segment.remove_color(buffer)
         for text, style, control in buffer:
-            if style:
-                if hasattr(style, '_tag'):
-                    append(
-                        style.render(
-                            text,
-                            color_system=color_system,
-                            legacy_windows=legacy_windows,
-                            mxp=self.mxp,
-                            links=False
-                        )
+            if style is not None:
+                s = style
+                if not isinstance(s, MudStyle):
+                    s = MudStyle.upgrade(s)
+                append(
+                    s.render(
+                        text,
+                        color_system=color_system,
+                        legacy_windows=legacy_windows,
+                        mxp=self.mxp,
+                        links=False
                     )
-                else:
-                    append(
-                        style.render(
-                            text,
-                            color_system=color_system,
-                            legacy_windows=legacy_windows,
-                        )
-                    )
+                )
             elif not (not_terminal and control):
                 append(text)
+            else:
+                if self.mxp:
+                    append(html.escape(text))
+                else:
+                    append(text)
 
         rendered = "".join(output)
         return rendered

@@ -8,6 +8,8 @@ from rich.color import Color
 import html
 import re
 from enum import IntFlag, IntEnum
+from xml.etree import ElementTree
+
 
 ANSI_SECTION_MATCH = {
     "letters": re.compile(r"^(?P<data>[a-z ]+)\b", flags=re.IGNORECASE),
@@ -172,7 +174,14 @@ def apply_rules(mark: ProtoStyle, rules: str):
 
 
 def apply_mxp(mark: ProtoStyle, rules: str):
-    pass
+    if ' ' in rules:
+        before, after = rules.split(' ', 1)
+        x = f"<{before} {after}></{before}>"
+    else:
+        x = f"<{rules}></{rules}>"
+    elem = ElementTree.fromstring(x)
+    mark.tag = elem.tag
+    mark.xml_attr = elem.attrib
 
 
 def serialize_colors(s: MudStyle) -> str:
@@ -372,7 +381,8 @@ def ansi_fun(code: str, text: Union[Text, str]) -> Text:
 
 def ansify(style: MudStyle, text: Union[Text, str]) -> MudText:
     if isinstance(text, Text):
-        return text
+        spans = [Span(s.start, s.end, style + s.style) for s in text.spans]
+        return MudText(text.plain, spans=spans)
     elif isinstance(text, str):
         spans = [Span(0, len(text), style)]
         return MudText(text, spans=spans)
@@ -382,9 +392,10 @@ def from_html(text: Union[Text, str], tag: str, **kwargs) -> Text:
     mark = ProtoStyle()
     mark.tag = tag
     mark.xml_attr = kwargs
+    style = mark.convert()
     if isinstance(text, Text):
-        t = [Segment(text.plain[s.start:s.end - s.start], s.style) for s in text.spans]
-        return Text.assemble(*t, style=mark.convert())
+        spans = [Span(s.start, s.end, style + s.style) for s in text.spans]
+        return MudText(text.plain, spans=spans)
     elif isinstance(text, str):
         spans = [Span(0, len(text), mark.convert())]
         return Text(text, spans=spans)
