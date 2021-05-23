@@ -34,6 +34,8 @@ class MudStyle(OLD_STYLE):
         self._null = not (self._set_attributes or self._color or self._bgcolor or self._link or self._tag)
 
     def __add__(self, style):
+        if isinstance(style, str):
+            style = MudStyle.parse(style)
         if not (isinstance(style, OLD_STYLE) or style is None):
             raise NotImplementedError()  # type: ignore
         if style is None or style._null:
@@ -63,6 +65,8 @@ class MudStyle(OLD_STYLE):
 
     @classmethod
     def upgrade(cls, style):
+        if isinstance(style, str):
+            style = OLD_STYLE.parse(style)
         if not (isinstance(style, OLD_STYLE) or style is None):
             raise NotImplementedError()  # type: ignore
         up_style = cls.__new__(cls)

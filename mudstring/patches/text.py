@@ -1,7 +1,8 @@
 from rich import text
 from rich.text import Span, Segment
 from typing import List, Set, Union, Dict, Tuple, Optional
-from . style import MudStyle
+from . style import MudStyle, OLD_STYLE
+from rich.control import strip_control_codes
 import random
 
 OLD_TEXT = text.Text
@@ -24,7 +25,7 @@ class MudText(text.Text):
         if other <= 0:
             return self.__class__()
         if other == 1:
-            return self.clone()
+            return self.copy()
         if other > 1:
             out = self.copy()
             for i in range(other-1):
@@ -171,38 +172,36 @@ class MudText(text.Text):
             start += len(sub)
 
     def scramble(self):
-        idx = self.disassemble()
+        idx = self.disassemble_bits()
         random.shuffle(idx)
         return self.__class__.assemble_bits(idx)
 
     @classmethod
-    def assemble_bits(cls, idx: List[Tuple[Optional[MudStyle], str]]):
-        start = 0
-        style = None
-        spans = list()
-        txt = ""
+    def assemble_bits(cls, idx: List[Tuple[Optional[Union[str, MudStyle, None]], str]]):
+        out = MudText()
         for i, t in enumerate(idx):
-            if i == 0:
-                style = t[0]
+            s = [Span(0, 1, t[0])]
+            out.append_text(MudText(text=t[1], spans=s))
+        return out
 
-            if (style is None and t[0] is None) or t[0] == style:
-                pass
-            else:
-                spans.append(text.Span(start, i, style))
-                style = t[0]
-                start = i
-            txt += t[1]
-        if not spans:
-            spans.append(text.Span(0, len(txt), style))
-        return cls(text=txt, spans=spans)
+    def style_at_index(self, offset: int) -> MudStyle:
+        """Get the style of a character at give offset.
+        Args:
+            offset (int): Offset in to text (negative indexing supported)
+        Returns:
+            Style: A Style instance.
+        """
+        # TODO: This is a little inefficient, it is only used by full justify
+        if offset < 0:
+            offset = len(self) + offset
+        style = MudStyle()
+        for start, end, span_style in self._spans:
+            if end > offset >= start:
+                style = style + span_style
+        return style
 
-    def disassemble_bits(self) -> List[Tuple[Optional[MudStyle], str]]:
+    def disassemble_bits(self) -> List[Tuple[Optional[Union[str, MudStyle, None]], str]]:
         idx = list()
-        for i, span in enumerate(self.spans):
-            for c in self.plain[span.start:span.end-span.start]:
-                idx.append((span.style, c))
+        for i, c in enumerate(self.plain):
+            idx.append((self.style_at_index(i), c))
         return idx
-
-    def disassemble(self) -> List[Segment]:
-        out = list()
-        return [Segment(self.plain[span.start:span.end-span.start], span.style) for span in self.spans]

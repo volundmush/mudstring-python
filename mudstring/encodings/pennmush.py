@@ -79,19 +79,27 @@ def _process_ground(codes: str, bg: bool = False) -> Tuple[str, Tuple[str, BgMod
             if k == "numbers":
                 data = match.groupdict()["data"]
                 number = abs(int(data))
-                if number > 255:
-                    raise TextError(match.group(0))
+                if number > 255 or number < 0:
+                    raise ValueError(match.group(0))
                 return codes, (k, ground, number, match.group(0))
             if k == "name":
                 return codes, (k, ground, match.groupdict()["data"].lower(), match.group(0))
             elif k in ("hex1", "hex2"):
-                return codes, (k, ground, '#' + match.groupdict()["data"].upper(), match.group(0))
+                data = match.groupdict()['data']
+                out = {
+                    'red': int(data[0:2], 16),
+                    'green': int(data[2:4], 16),
+                    'blue': int(data[4:6], 16)
+                }
+                return codes, (k, ground, out, match.group(0))
             elif k == "rgb":
                 data = match.groupdict()
-                hex = f"#{int(data['red']):2X}{int(data['green']):2X}{int(data['blue']):2X}"
-                return codes, (k, ground, hex, match.group(0))
+                #hex = f"#{int(data['red']):2X}{int(data['green']):2X}{int(data['blue']):2X}"
+                data = {k: int(v) for k, v in data.items()}
+                print(f"DATA IS: {data}")
+                return codes, (k, ground, data, match.group(0))
     if not matched:
-        raise TextError(codes)
+        raise ValueError(codes)
 
 
 def separate_codes(codes: str, errors: str = "strict"):
@@ -150,22 +158,22 @@ def apply_color_rule(mark: ProtoStyle, rule_tuple):
             else:
                 pass  # I dunno what we got passed, but it ain't relevant.
 
-    elif g == "fg":
+    elif g == BgMode.FG:
         if mode == "numbers":
-            mark.set_xterm_fg(data)
+            setattr(mark, "color", Color.from_ansi(data))
         elif mode == "name":
             if (found := COLORS.get(data)):
-                mark.set_xterm_fg(found["xterm"])
+                setattr(mark, "color", Color.from_ansi(found["xterm"]))
         elif mode in ("rgb", "hex1", "hex2"):
-            mark.set_xterm_fg(int(HEX(data)))
-    elif g == "bg":
+            setattr(mark, "color", Color.from_rgb(data['red'], data['green'], data['blue']))
+    elif g == BgMode.BG:
         if mode == "numbers":
-            mark.set_xterm_bg(data)
+            setattr(mark, "bgcolor", Color.from_ansi(data))
         elif mode == "name":
             if (found := COLORS.get(data)):
-                mark.set_xterm_bg(found["xterm"])
+                setattr(mark, "bgcolor", Color.from_ansi(found["xterm"]))
         elif mode in ("rgb", "hex1", "hex2"):
-            mark.set_xterm_bg(int(HEX(data)))
+            setattr(mark, "bgcolor", Color.from_rgb(data['red'], data['green'], data['blue']))
 
 
 def apply_rules(mark: ProtoStyle, rules: str):
@@ -362,6 +370,7 @@ def decode(src, errors: str = "strict") -> Text:
 
     return Text.assemble(*segments)
 
+
 def ansi_fun_style(code: str) -> MudStyle:
     if code is None:
         code = ''
@@ -398,7 +407,7 @@ def from_html(text: Union[Text, str], tag: str, **kwargs) -> Text:
         return MudText(text.plain, spans=spans)
     elif isinstance(text, str):
         spans = [Span(0, len(text), mark.convert())]
-        return Text(text, spans=spans)
+        return MudText(text, spans=spans)
 
 
 def send_menu(text: str, commands=None) -> Text:
