@@ -3,10 +3,8 @@ class OutBuffer:
     def __init__(self, buffer: bytearray):
         self.buffer = buffer
 
-    def write(self, b: bytes):
-        if isinstance(b, str):
-            b = b.encode()
-        self.buffer.extend(b)
+    def write(self, b: str):
+        self.buffer.extend(b.encode())
 
     def flush(self):
         pass
