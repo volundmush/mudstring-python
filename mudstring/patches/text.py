@@ -105,11 +105,27 @@ class MudText(text.Text):
             new_idx.append((None, c))
         return self.__class__.assemble_bits(new_idx)
 
-    def ljust(self, width, fillchar=' '):
-        return self.__class__(self.plain.ljust(width, fillchar).replace(self.plain, self.encode()))
+    def ljust(self, width: int, fillchar: Union[str, "MudText"] = ' '):
+        diff = width - len(self)
+        out = self.copy()
+        if diff <= 0:
+            return out
+        else:
+            if isinstance(fillchar, str):
+                fillchar = MudText(fillchar)
+            out.append(fillchar * diff)
+            return out
 
-    def rjust(self, width, fillchar=' '):
-        return self.__class__(self.plain.ljust(width, fillchar).replace(self.plain, self.encode()))
+    def rjust(self, width: int, fillchar: Union[str, "MudText"] = ' '):
+        diff = width - len(self)
+        if diff <= 0:
+            return self.copy()
+        else:
+            if isinstance(fillchar, str):
+                fillchar = MudText(fillchar)
+            out = fillchar * diff
+            out.append(self)
+            return out
 
     def lstrip(self, chars: str = None):
         lstripped = self.plain.lstrip(chars)
@@ -176,6 +192,11 @@ class MudText(text.Text):
         random.shuffle(idx)
         return self.__class__.assemble_bits(idx)
 
+    def reverse(self):
+        idx = self.disassemble_bits()
+        idx.reverse()
+        return self.__class__.assemble_bits(idx)
+
     @classmethod
     def assemble_bits(cls, idx: List[Tuple[Optional[Union[str, MudStyle, None]], str]]):
         out = MudText()
@@ -185,13 +206,6 @@ class MudText(text.Text):
         return out
 
     def style_at_index(self, offset: int) -> MudStyle:
-        """Get the style of a character at give offset.
-        Args:
-            offset (int): Offset in to text (negative indexing supported)
-        Returns:
-            Style: A Style instance.
-        """
-        # TODO: This is a little inefficient, it is only used by full justify
         if offset < 0:
             offset = len(self) + offset
         style = MudStyle()
