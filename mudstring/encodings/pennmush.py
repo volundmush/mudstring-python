@@ -1,7 +1,6 @@
 from ..patches.style import MudStyle, ProtoStyle
 from ..patches.text import MudText
 from .colors import COLORS
-from colored.hex import HEX
 from typing import Union, Tuple, List
 from rich.text import Text, Segment, Span
 from rich.color import Color
