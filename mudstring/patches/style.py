@@ -9,16 +9,18 @@ OLD_STYLE = style.Style
 
 class MudStyle(OLD_STYLE):
     _tag: str
-    _xml_attr: str
+    _xml_attr: Dict
+    _xml_attr_data: str
 
-    __slots__ = ['_tag', '_xml_attr']
+    __slots__ = ['_tag', '_xml_attr',  '_xml_attr_data']
 
     def __init__(self, *args, **kwargs):
         self._tag = kwargs.pop('tag', '')
         if (xml_attr := kwargs.pop('xml_attr', None)):
-            self._xml_attr = ' '.join(f'{k}="{html.escape(v)}"' for k, v in xml_attr.items()) if xml_attr else ''
+            self._xml_attr = xml_attr
+            self._xml_attr_data = ' '.join(f'{k}="{html.escape(v)}"' for k, v in xml_attr.items()) if xml_attr else ''
         else:
-            self._xml_attr = ''
+            self._xml_attr_data = ''
         super().__init__(*args, **kwargs)
         self._hash = hash(
             (
@@ -28,7 +30,7 @@ class MudStyle(OLD_STYLE):
                 self._set_attributes,
                 self._link,
                 self._tag,
-                self._xml_attr
+                self._xml_attr_data
             )
         )
         self._null = not (self._set_attributes or self._color or self._bgcolor or self._link or self._tag)
@@ -58,9 +60,11 @@ class MudStyle(OLD_STYLE):
         if hasattr(style, "_tag"):
             new_style._tag = style._tag
             new_style._xml_attr = style._xml_attr
+            new_style._xml_attr_data = style._xml_attr_data
         else:
             new_style._tag = self._tag
             new_style._xml_attr = self._xml_attr
+            new_style._xml_attr_data = self._xml_attr_data
         return new_style
 
     @classmethod
@@ -73,7 +77,8 @@ class MudStyle(OLD_STYLE):
         for s in OLD_STYLE.__slots__:
             setattr(up_style, s, getattr(style, s))
         up_style._tag = ''
-        up_style._xml_attr = ''
+        up_style._xml_attr = dict()
+        up_style._xml_attr_data = ''
         return up_style
 
     def __radd__(self, other):
@@ -109,10 +114,23 @@ class MudStyle(OLD_STYLE):
             rendered = f"\x1b]8;id={self._link_id};{self._link}\x1b\\{rendered}\x1b]8;;\x1b\\"
         if mxp and self._tag:
             if self._xml_attr:
-                rendered = f"\x1b[4z<{self._tag} {self._xml_attr}>{rendered}\x1b[4z</{self._tag}>"
+                rendered = f"\x1b[4z<{self._tag} {self._xml_attr_data}>{rendered}\x1b[4z</{self._tag}>"
             else:
                 rendered = f"\x1b[4z<{self._tag}>{rendered}\x1b[4z</{self._tag}>"
         return rendered
+
+    def serialize(self) -> dict:
+        attrs = ('color', 'bgcolor', 'bold', 'dim', 'italic', 'underline', 'blink', 'blink2', 'reverse', 'conceal',
+                 'strike', 'underline2', 'frame', 'encircle', 'overline', 'link', 'tag', 'xml_attr')
+
+        out = dict()
+
+        for attr in attrs:
+            found = getattr(self, attr, None)
+            if found is not None:
+                out[attr] = found
+
+        return out
 
 
 OLD_NULL = style.NULL_STYLE

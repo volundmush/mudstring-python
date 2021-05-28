@@ -219,3 +219,50 @@ class MudText(text.Text):
         for i, c in enumerate(self.plain):
             idx.append((self.style_at_index(i), c))
         return idx
+
+    def serialize(self) -> dict:
+        def ser_style(style):
+            if isinstance(style, str):
+                style = MudStyle.parse(style)
+            if not isinstance(style, MudStyle):
+                style = MudStyle.upgrade(style)
+            return style.serialize()
+
+        def ser_span(span):
+            if not span.style:
+                return None
+            return {
+                'start': span.start,
+                'end': span.end,
+                'style': ser_style(span.style)
+            }
+
+        out = {
+            "text": self.plain
+        }
+
+        if self.style:
+            out['style'] = ser_style(self.style)
+
+        out_spans = [s for span in self.spans if (s := ser_span(span))]
+
+        if out_spans:
+            out['spans'] = out_spans
+
+        return out
+
+    @classmethod
+    def deserialize(cls, data) -> "MudText":
+        text = data.get("text", None)
+        if text is None:
+            return cls("")
+        style = data.get("style", None)
+        if style:
+            style = MudStyle(**style)
+
+        spans = data.get("spans", None)
+
+        if spans:
+            spans = [Span(s['start'], s['end'], MudStyle(**s['style'])) for s in spans]
+
+        return cls(text=text, style=style, spans=spans)
