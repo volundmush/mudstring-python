@@ -20,6 +20,7 @@ class MudStyle(OLD_STYLE):
             self._xml_attr = xml_attr
             self._xml_attr_data = ' '.join(f'{k}="{html.escape(v)}"' for k, v in xml_attr.items()) if xml_attr else ''
         else:
+            self._xml_attr = dict()
             self._xml_attr_data = ''
         super().__init__(*args, **kwargs)
         self._hash = hash(
@@ -128,7 +129,10 @@ class MudStyle(OLD_STYLE):
         for attr in attrs:
             found = getattr(self, attr, None)
             if found is not None:
-                out[attr] = found
+                if isinstance(found, Color):
+                    out[attr] = found.name
+                else:
+                    out[attr] = found
 
         return out
 

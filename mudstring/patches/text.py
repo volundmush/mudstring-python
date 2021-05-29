@@ -1,8 +1,8 @@
 from rich import text
-from rich.text import Span, Segment
+from rich.text import Span
 from typing import List, Set, Union, Dict, Tuple, Optional
 from . style import MudStyle, OLD_STYLE
-from rich.control import strip_control_codes
+
 import random
 
 OLD_TEXT = text.Text
