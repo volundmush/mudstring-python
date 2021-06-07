@@ -9,6 +9,8 @@
 
 **Discord:** Volund#1206
 
+**Discord Channel:** https://discord.gg/Sxuz3QNU8U
+
 **Patreon:** https://www.patreon.com/volund
 
 **Home Repository:** https://github.com/volundmush/mudstring-python
@@ -62,13 +64,13 @@ Note that MudString's Text class for Rich implements a great deal more of the Py
 
 ## FAQ 
   __Q:__ This is cool! How can I help?  
-  __A:__ Patreon support is always welcome. If you can code and have cool ideas or bug fixes, feel free to fork, edit, and pull request!
+  __A:__ [Patreon](https://www.patreon.com/volund) support is always welcome. If you can code and have cool ideas or bug fixes, feel free to fork, edit, and pull request! Join our [discord](https://discord.gg/Sxuz3QNU8U) to really get cranking away though.
 
   __Q:__ I found a bug! What do I do?  
   __A:__ Post it on this GitHub's Issues tracker. I'll see what I can do when I have time. ... or you can try to fix it yourself and submit a Pull Request. That's cool too.
 
   __Q:__ But... I want a MUD! Where do I start making a MUD?  
-  __A:__ Coming soon...
+  __A:__ check out [pymush](https://github.com/volundmush/pymush) and [athanor](https://github.com/volundmush/athanor)
 
 ## Special Thanks
   * The absolutely awesome lunatics who wrote PennMUSH's ANSI library.

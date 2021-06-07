@@ -2,11 +2,14 @@ from rich import text
 from rich.text import Span
 from typing import List, Set, Union, Dict, Tuple, Optional
 from . style import MudStyle, OLD_STYLE
+import re
 
 import random
 
 OLD_TEXT = text.Text
 
+_RE_SQUISH = re.compile("\S+")
+_RE_NOTSPACE = re.compile("[^ ]+")
 
 class MudText(text.Text):
 
@@ -266,3 +269,35 @@ class MudText(text.Text):
             spans = [Span(s['start'], s['end'], MudStyle(**s['style'])) for s in spans]
 
         return cls(text=text, style=style, spans=spans)
+
+    def squish(self) -> "MudText":
+        """
+        Removes leading and trailing whitespace, and coerces all internal whitespace sequences
+        into at most a single space. Returns the results.
+        """
+        out = list()
+        matches = _RE_SQUISH.finditer(self.plain)
+        for match in matches:
+            out.append(self[match.start():match.end()])
+        return MudText(" ").join(out)
+
+    def squish_spaces(self) -> "MudText":
+        """
+        Like squish, but retains newlines and tabs. Just squishes spaces.
+        """
+        out = list()
+        matches = _RE_NOTSPACE.finditer(self.plain)
+        for match in matches:
+            out.append(self[match.start():match.end()])
+        return MudText(" ").join(out)
+
+    @classmethod
+    def upgrade(cls, text: OLD_TEXT) -> "MudText":
+        if isinstance(text, cls):
+            return text
+        elif isinstance(text, str):
+            return MudText(text)
+        elif isinstance(text, OLD_TEXT):
+            return cls(text=text.plain, style=text.style, spans=text.spans)
+        else:
+            raise ValueError("Must be a string or Text instance!")
