@@ -20,6 +20,10 @@ def get_requirements():
             reqs.append(line)
     return reqs
 
+from os import path
+this_directory = path.abspath(path.dirname(__file__))
+with open(path.join(this_directory, 'README.md'), encoding='utf-8') as f:
+    long_description = f.read()
 
 # setup the package
 setup(
@@ -30,10 +34,8 @@ setup(
     url="https://github.com/volundmush/mudstring-python",
     description="Simple monkey-patching library to make for amazing ANSI experiences in MUDs",
     license="MIT",
-    long_description="""
-    Rich is already awesome for making pretty ANSI text, and with mudstring it can now be used as a basis for text
-    libraries used by MUDs and their brethren such as MUCK, MUX, MOO, and MUSH.
-    """,
+    long_description=long_description,
+    long_description_content_type='text/markdown',
     packages=["mudstring"],
    # install_requires=get_requirements(),
     zip_safe=False,
