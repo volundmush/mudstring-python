@@ -409,7 +409,7 @@ def from_html(text: Union[Text, str], tag: str, **kwargs) -> Text:
         return MudText(text, spans=spans)
 
 
-def send_menu(text: str, commands=None) -> Text:
+def send_menu(text: Union[Text, str], commands=None) -> Text:
     if commands is None:
         commands = []
     hints = '|'.join(a[1] for a in commands)

@@ -1,10 +1,13 @@
 import html
 from rich import style
-from typing import Optional, Union, Dict
+from typing import Optional, Union, Dict, Iterable
 from rich.color import ColorSystem, ColorType, ColorParseError, ColorTriplet, Color
-
+import operator
+from functools import reduce
 
 OLD_STYLE = style.Style
+
+OLD_NULL = style.NULL_STYLE
 
 
 class MudStyle(OLD_STYLE):
@@ -85,6 +88,22 @@ class MudStyle(OLD_STYLE):
     def __radd__(self, other):
         return self.__class__.upgrade(other) + self
 
+    @classmethod
+    def combine(cls, styles: Iterable["Style"]) -> "MudStyle":
+        """Combine styles and get result.
+
+        Args:
+            styles (Iterable[Style]): Styles to combine.
+
+        Returns:
+            Style: A new style instance.
+        """
+        return reduce(operator.add, [cls.upgrade(s) for s in styles])
+
+    @classmethod
+    def chain(cls, *styles: "MudStyle") -> "Style":
+        return cls.combine(styles)
+
     def render(
         self,
         text: str = "",
@@ -136,8 +155,13 @@ class MudStyle(OLD_STYLE):
 
         return out
 
+    @classmethod
+    def null(cls) -> "MudStyle":
+        """Create an 'null' style, equivalent to Style(), but more performant."""
+        return NULL_STYLE
 
-OLD_NULL = style.NULL_STYLE
+
+NULL_STYLE = MudStyle()
 
 
 class ProtoStyle:
