@@ -1,4 +1,3 @@
-
 class OutBuffer:
     def __init__(self, buffer: bytearray):
         self.buffer = buffer

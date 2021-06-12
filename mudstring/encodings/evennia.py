@@ -6,14 +6,14 @@ from typing import Union, List, Tuple
 
 
 LETTERS = {
-    'x': Color.from_ansi(0),
-    'r': Color.from_ansi(1),
-    'g': Color.from_ansi(2),
-    'y': Color.from_ansi(3),
-    'b': Color.from_ansi(4),
-    'm': Color.from_ansi(5),
-    'c': Color.from_ansi(6),
-    'w': Color.from_ansi(7)
+    "x": Color.from_ansi(0),
+    "r": Color.from_ansi(1),
+    "g": Color.from_ansi(2),
+    "y": Color.from_ansi(3),
+    "b": Color.from_ansi(4),
+    "m": Color.from_ansi(5),
+    "c": Color.from_ansi(6),
+    "w": Color.from_ansi(7),
 }
 
 
@@ -23,7 +23,7 @@ EV_REGEX = {
     "bg_ansi_bold": re.compile(r"^\[(r|g|y|b|m|c|x|w)"),
     "bg_ansi_normal": re.compile(r"^\[(R|G|Y|B|M|C|X|W)"),
     "fg_xterm": re.compile(r"^[0-5]{3}"),
-    "bg_xterm": re.compile(r"^\[([0-5]{3})")
+    "bg_xterm": re.compile(r"^\[([0-5]{3})"),
 }
 
 
@@ -59,32 +59,26 @@ EV_APPLY = {
     "bg_ansi_bold": apply_bg_ansi_bold,
     "bg_ansi_normal": apply_bg_ansi_normal,
     "fg_xterm": apply_fg_xterm,
-    "bg_xterm": apply_bg_xterm
+    "bg_xterm": apply_bg_xterm,
 }
 
 
 def apply_ansi_style(proto: ProtoStyle, code: str):
-    if code == 'h':
+    if code == "h":
         proto.bold = True
-    elif code == 'H':
+    elif code == "H":
         proto.bold = False
-    elif code == '*':
+    elif code == "*":
         proto.reverse = True
-    elif code == 'u':
+    elif code == "u":
         proto.underline = True
-    elif code == '^':
+    elif code == "^":
         proto.blink = True
-    elif code == 'n':
+    elif code == "n":
         proto.do_reset()
 
 
-CHAR_SUBS = {
-    '-': '\t',
-    '_': ' ',
-    '/': '\n',
-    '>': '    ',
-    '|': '|'
-}
+CHAR_SUBS = {"-": "\t", "_": " ", "/": "\n", ">": "    ", "|": "|"}
 
 
 def decode(src: str, errors: str = "strict") -> Text:
@@ -97,45 +91,45 @@ def decode(src: str, errors: str = "strict") -> Text:
 
     while len(remaining):
         if escaped:
-            if (sub_char := CHAR_SUBS.get(remaining[0], None)):
+            if (sub_char := CHAR_SUBS.get(remaining[0], None)) :
                 segment += sub_char
                 remaining = remaining[1:]
-            elif remaining[0] in ('n', 'N'):
+            elif remaining[0] in ("n", "N"):
                 if segment:
                     segments.append((segment, current.convert()))
-                    segment = ''
+                    segment = ""
                 current = ProtoStyle(parent=current)
                 current.do_reset()
                 remaining = remaining[1:]
-            elif remaining[0] in ('h', 'H', '*', 'u', '^'):
+            elif remaining[0] in ("h", "H", "*", "u", "^"):
                 if segment:
                     segments.append((segment, current.convert()))
-                    segment = ''
+                    segment = ""
                 current = ProtoStyle(parent=current)
                 current.inherit_ansi()
                 apply_ansi_style(current, remaining[0])
                 remaining = remaining[1:]
             else:
                 for name, pattern in EV_REGEX.items():
-                    if (match := pattern.match(remaining)):
+                    if (match := pattern.match(remaining)) :
                         if segment:
                             segments.append((segment, current.convert()))
-                            segment = ''
+                            segment = ""
                         current = ProtoStyle(parent=current)
                         current.inherit_ansi()
                         EV_APPLY[name](current, match)
-                        remaining = remaining[match.end(0):]
+                        remaining = remaining[match.end(0) :]
                         break
             escaped = False
         else:
-            loc = remaining.find('|')
+            loc = remaining.find("|")
             if loc != -1:
                 segment += remaining[:loc]
-                remaining = remaining[loc+1:]
+                remaining = remaining[loc + 1 :]
                 escaped = True
             else:
                 segment += remaining
-                remaining = ''
+                remaining = ""
 
     if segment:
         segments.append((segment, current.convert()))
@@ -144,4 +138,4 @@ def decode(src: str, errors: str = "strict") -> Text:
 
 
 def encode(src: Text) -> str:
-    return ''
+    return ""
